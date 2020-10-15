@@ -1,16 +1,11 @@
+#include "MotionDetector.h"
 #include <Arduino.h>
 #include <Countdown.h>
-#include <Display.h>
 #include <ESP8266WiFi.h>
-#include <elapsedMillis.h>
 
 //#define TEST_MODE
-#define BUZZER_PIN D8
-#define BUTTON_PIN D3
-
 struct Resources
 {
-
     struct EarlyInit
     {
         EarlyInit()
@@ -21,187 +16,74 @@ struct Resources
         }
     } _;
 
-    // -----
-
 #ifdef TEST_MODE
-    const bool verbose{ true };
+    MotionDetector monitor{ D3, D2, 20, true};
+    Countdown standby_officer{ 5 };
 #else
-    const bool verbose{ false };
+    MotionDetector monitor{ D3, D2, 20, false };
+    Countdown standby_officer{5};
 #endif
-
-    // -----
-
-    Display display;
-    elapsedMillis time_since_last_display_refresh_ms;
-    const uint8_t refresh_display_every_ms{ 125 };
-
-    // -----
-
-#ifdef TEST_MODE
-    const uint8_t min_scans_no_wifi_disable_alert{ 20 };
-#else
-    const uint8_t min_scans_no_wifi_disable_alert{ 30 };
-#endif
-
-    // -----
-
-    struct Alerting
-    {
-        bool is_active{ false };
-        elapsedMillis alert_age{ 0 };
-        uint16_t total_count{ 0 };
-        uint8_t silence_next_alerts_count{ 0 };
-
-        int32_t channel{ -1 };
-        int32_t rssi{ -200 };
-
-    } alerting;
-
-    // -----
+    std::function<void()> on_timeout_trigger {[&](){return onTriggerEnd();}};
 
     void setup()
     {
         WiFi.persistent(false);
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect();
+        onTriggerEnd();
+        WiFi.setOutputPower(21);
+
+#ifdef TEST_MODE
+        pinMode(LED_BUILTIN, OUTPUT);
+#else
         wifi_status_led_uninstall();
+#endif
 
-        pinMode(BUZZER_PIN, OUTPUT);
-        pinMode(BUTTON_PIN, INPUT);
-
-        display.setRotation(2);
-        display.clearDisplay();
-        display.setup();
-        display.dim(false);
-    };
-
-    void process()
-    {
-        doAsyncScan();
-        updateScreen();
-
-        bool button_pressed = !digitalRead(BUTTON_PIN);
-        if(button_pressed && alerting.is_active)
-        {
-            alerting.silence_next_alerts_count = 1;
-        }
-    };
-
-    ///! scan start to end marked with { and }
-    ///! alert evaluation start to end marked with (N and ) with N being the number of scanned SSIDs
-    void doAsyncScan()
-    {
-        const int8_t scan_result{ WiFi.scanComplete() };
-        if(WIFI_SCAN_RUNNING == scan_result)
-            return;
-
-        // ----- evaluate
-        if(WIFI_SCAN_FAILED != scan_result)
-        {
-            const int8_t ssid_count{ scan_result };
-            bool alert_signal_detected {false};
-
-            alerting.channel = (-1);
-            alerting.rssi = -200;
-
-            if(ssid_count > 0)
-            {
-                alert_signal_detected = WiFi.SSID(0).compareTo("x") == 0;
-                alerting.channel = WiFi.channel(0);
-                alerting.rssi = WiFi.RSSI(0);
-            }
-
-            if(verbose)
-                Serial.printf("(%d", ssid_count);
-            computeAlert(alert_signal_detected);
-            if(verbose)
-                Serial.print(")}\n");
-        }
-
-        // ----- scan
-        if(verbose)
-            Serial.print('{');
-        char ssid[]{ "x" };
-        WiFi.scanNetworks(true, false, 1, static_cast<uint8 *>(static_cast<void *>(&ssid)));
+        monitor.setup(
+        [&](bool movement_detected) { return onMovementChangeCallback(movement_detected); });
+    }
+    void process() {
+        monitor.process();
+        standby_officer.process(on_timeout_trigger);
     }
 
-    ///! alert start and end marked with [ and ]
-    ///! number of retries marked with <N> with N the pending retry count
-    void computeAlert(bool alert_signal_detected)
+    void onMovementChangeCallback(bool movement_detected)
     {
-        static uint8_t no_signal_found_retries{ min_scans_no_wifi_disable_alert };
-
-        if(alert_signal_detected)
+        if(movement_detected)
         {
-            if(!alerting.is_active)
-            {
-                if(verbose)
-                    Serial.print("[");
-                alerting.is_active = true;
-                alerting.alert_age = 0;
-                alerting.total_count++;
-            }
-            if(verbose)
-                Serial.printf("<%d>", no_signal_found_retries);
-            no_signal_found_retries = min_scans_no_wifi_disable_alert;
+#ifdef TEST_MODE
+            digitalWrite(LED_BUILTIN, LOW);
+#endif
+            standby_officer.disable();
+            onTrigger();
         }
         else
         {
-            if(no_signal_found_retries > 0)
+#ifdef TEST_MODE
+            digitalWrite(LED_BUILTIN, HIGH);
+#endif
+            if (!standby_officer.isEnabled())
             {
-                no_signal_found_retries--;
-                if(verbose)
-                    Serial.printf("<%d>", no_signal_found_retries);
-            }
-            if(alerting.is_active && no_signal_found_retries <= 0)
-            {
-                alerting.is_active = false;
-                if(alerting.silence_next_alerts_count > 0)
-                    alerting.silence_next_alerts_count--;
-                if(verbose)
-                    Serial.print("]");
+                standby_officer.reset();
+                standby_officer.enable();
             }
         }
-        if(verbose)
-            Serial.print(')');
     }
 
-    ///! state marked with ! (alerting) and . (idle)
-    void updateScreen()
+    void onTrigger() {
+        if (WIFI_AP != WiFi.getMode())
+        {
+            Serial.println("signal detected movement");
+            WiFi.softAP("x", nullptr,1);
+            WiFi.enableAP(true);
+        }
+    }
+    void onTriggerEnd()
     {
-        static bool is_inverted{ false };
-
-        if(time_since_last_display_refresh_ms < refresh_display_every_ms)
-            return;
-        time_since_last_display_refresh_ms = 0;
-
-        if(alerting.is_active)
-        {
-            Serial.print('!');
-            display.invertDisplay(is_inverted);
-            is_inverted = !is_inverted;
-
-            if(alerting.silence_next_alerts_count <= 0)
-                digitalWrite(BUZZER_PIN, is_inverted);
-            else
-                digitalWrite(BUZZER_PIN, LOW);
-        }
-        else
-        {
-            Serial.print('.');
-            display.invertDisplay(false);
-            digitalWrite(BUZZER_PIN, LOW);
-        }
-
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.printf("alerts       %3d\n", alerting.total_count);
-        display.printf("alert age [s]%3lu\n", ((alerting.is_active) ? (alerting.alert_age / 1000) : 0));
-        display.printf("silence next %3d\n", alerting.silence_next_alerts_count);
-        display.printf("ch %2d RSSI %5d\n", alerting.channel, alerting.rssi);
-        display.printf("\n\n\n            %9lu", millis() / 1000);
-        display.display();
+        Serial.println("detected movement timed out");
+        WiFi.enableAP(false);
+        WiFi.forceSleepBegin();
+        monitor.skipSamples(5);
     }
+
 } r;
 
 void setup() { r.setup(); }
