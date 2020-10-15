@@ -38,9 +38,9 @@ struct Resources
     // -----
 
 #ifdef TEST_MODE
-    const uint8_t min_scans_no_wifi_disable_alert{ 10 };
-#else
     const uint8_t min_scans_no_wifi_disable_alert{ 20 };
+#else
+    const uint8_t min_scans_no_wifi_disable_alert{ 30 };
 #endif
 
     // -----
