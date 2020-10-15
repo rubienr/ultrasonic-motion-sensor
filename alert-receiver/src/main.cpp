@@ -1,9 +1,9 @@
-#include "MovementMonitor.h"
+#include "MotionDetector.h"
 #include <Arduino.h>
 #include <Countdown.h>
 #include <ESP8266WiFi.h>
 
-#define TEST_MODE
+//#define TEST_MODE
 struct Resources
 {
     struct EarlyInit
@@ -17,11 +17,11 @@ struct Resources
     } _;
 
 #ifdef TEST_MODE
-    MovementMonitor monitor{ D3, D2, 20, true};
+    MotionDetector monitor{ D3, D2, 20, true};
     Countdown standby_officer{ 5 };
 #else
-    MovementMonitor monitor{ D3, D2, 20, false };
-    Countdown standby_officer{20};
+    MotionDetector monitor{ D3, D2, 20, false };
+    Countdown standby_officer{5};
 #endif
     std::function<void()> on_timeout_trigger {[&](){return onTriggerEnd();}};
 
@@ -29,10 +29,13 @@ struct Resources
     {
         WiFi.persistent(false);
         onTriggerEnd();
-        wifi_status_led_uninstall();
         WiFi.setOutputPower(21);
 
+#ifdef TEST_MODE
         pinMode(LED_BUILTIN, OUTPUT);
+#else
+        wifi_status_led_uninstall();
+#endif
 
         monitor.setup(
         [&](bool movement_detected) { return onMovementChangeCallback(movement_detected); });
@@ -46,13 +49,17 @@ struct Resources
     {
         if(movement_detected)
         {
+#ifdef TEST_MODE
             digitalWrite(LED_BUILTIN, LOW);
+#endif
             standby_officer.disable();
             onTrigger();
         }
         else
         {
+#ifdef TEST_MODE
             digitalWrite(LED_BUILTIN, HIGH);
+#endif
             if (!standby_officer.isEnabled())
             {
                 standby_officer.reset();

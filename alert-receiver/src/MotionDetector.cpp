@@ -1,15 +1,15 @@
-#include "MovementMonitor.h"
+#include "MotionDetector.h"
 
 // ------------------------------------------------------------------------------------------------
 
-MovementMonitor::MovementMonitor(uint8_t trigger_pin, uint8_t echo_pin, uint8_t temperature, bool verbose_logging)
+MotionDetector::MotionDetector(uint8_t trigger_pin, uint8_t echo_pin, uint8_t temperature, bool verbose_logging)
 : verbose{ verbose_logging }, ultrasonic_sensor{ trigger_pin, echo_pin, temperature, 255 }, temperature{ temperature }
 {
 }
 
 // ------------------------------------------------------------------------------------------------
 
-void MovementMonitor::setup(std::function<void(bool)> callback)
+void MotionDetector::setup(std::function<void(bool)> callback)
 {
     Serial.println(F("initializing movement monitor:"));
     Serial.printf("threshold:                     %d [cm]\n", detection_threshold_mm);
@@ -24,33 +24,36 @@ void MovementMonitor::setup(std::function<void(bool)> callback)
 
 // ------------------------------------------------------------------------------------------------
 
-void MovementMonitor::process()
+void MotionDetector::process()
 {
     auto detected_state = detect();
 
     if(callback != nullptr && detected_state != DetectionState::Unknown)
     {
-        callback(current_detection_state == DetectionState::Movement);
+        callback(current_detection_state == DetectionState::MotionDetected);
     }
 }
 
 // ------------------------------------------------------------------------------------------------
 
-void MovementMonitor::skipSamples(uint8_t n) { skip_samples = n; }
+void MotionDetector::skipSamples(uint8_t n) { skip_samples = n; }
 
 // ------------------------------------------------------------------------------------------------
 
-bool MovementMonitor::probe()
+bool MotionDetector::probe()
 {
     const float distance = ultrasonic_sensor.getDistance();
 
     // --- skip requested N samples but measure to sample out VCC
-    skip_samples = (skip_samples > 0) ? skip_samples - 1 : skip_samples;
     if(skip_samples > 0)
     {
         Serial.print('.');
+        if(skip_samples == 1)
+            Serial.println();
+        skip_samples--;
         return false;
     }
+
 
     current_distance_mm = 10u * static_cast<uint16_t>(std::roundf(distance));
 
@@ -89,7 +92,7 @@ bool MovementMonitor::probe()
 
 // ------------------------------------------------------------------------------------------------
 
-MovementMonitor::DetectionState MovementMonitor::detect()
+MotionDetector::DetectionState MotionDetector::detect()
 {
     for(int i{ num_samples_at_once }; i > 0; i--)
     {
@@ -128,14 +131,14 @@ MovementMonitor::DetectionState MovementMonitor::detect()
             if(current_sequential_detections >= min_sequential_detections)
             {
                 previous_detection_state = current_detection_state;
-                current_detection_state = DetectionState::Movement;
+                current_detection_state = DetectionState::MotionDetected;
                 if(verbose)
                     Serial.printf(" hit   ");
             }
             else if(current_sequential_detections <= 0)
             {
                 previous_detection_state = current_detection_state;
-                current_detection_state = DetectionState::NoDetection;
+                current_detection_state = DetectionState::MotionEndDetected;
                 if(verbose)
                     Serial.printf(" noise ");
             }
@@ -146,17 +149,17 @@ MovementMonitor::DetectionState MovementMonitor::detect()
 
             if(current_detection_state != previous_detection_state)
             {
-                if(current_detection_state == DetectionState::Movement)
+                if(current_detection_state == DetectionState::MotionDetected)
                 {
                     if(verbose)
-                        Serial.printf(" -> movement\n");
-                    return MovementMonitor::DetectionState::Movement;
+                        Serial.printf(" -> motion\n");
+                    return MotionDetector::DetectionState::MotionDetected;
                 }
                 else
                 {
                     if(verbose)
                         Serial.printf(" -> stopped\n");
-                    return MovementMonitor::DetectionState::NoDetection;
+                    return MotionDetector::DetectionState::MotionEndDetected;
                 }
             }
 
@@ -172,5 +175,5 @@ MovementMonitor::DetectionState MovementMonitor::detect()
 
     if(verbose)
         Serial.printf(" -> unchanged\n");
-    return MovementMonitor::DetectionState::NoDetection;
+    return MotionDetector::DetectionState::MotionEndDetected;
 }

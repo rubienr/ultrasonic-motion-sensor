@@ -60,16 +60,16 @@ protected:
 
 // ------------------------------------------------------------------------------------------------
 
-struct MovementMonitor
+struct MotionDetector
 {
     enum class DetectionState : uint8_t {
-        Movement,
-        NoDetection,
+        MotionDetected,
+        MotionEndDetected,
         StateUnchanged,
         Unknown,
     };
 
-    MovementMonitor(uint8_t trigger_pin, uint8_t echo_pin, uint8_t temperature=20, bool verbose_logging=false);
+    MotionDetector(uint8_t trigger_pin, uint8_t echo_pin, uint8_t temperature=20, bool verbose_logging=false);
     void setup(std::function<void(bool)> callback = nullptr);
     void process();
     void skipSamples(uint8_t n);
