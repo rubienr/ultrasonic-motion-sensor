@@ -4,8 +4,8 @@ A very simple system applies an ultrasonic sensor to detect movements and signal
 Otherwise no wireless network is enabled.
  
          --------                -------
-        |alerting|    <----     | alert |      ------
-        | device |     wifi     |monitor|-----|HCSR04|
+        | alert  |    <----     | alert |      ------
+        |receiver|     wifi     |checker|-----|HCSR04|
          --------                -------       ------
 	  * flashes screen        * en/disables wifi on
           * enables buzzer          detection/no detection
@@ -21,7 +21,7 @@ Otherwise no wireless network is enabled.
 
 ## How to Use
 
-* compile the project in alerting-device and flash on a device (ESP8266)
-* compile the project in alert-monitor and flash on a device (ESP8266)
-* clone and modify the project for your needs
+* compile the project in alert-checker and flash on a device (ESP8266)
+* compile the project in alert-receiver and flash on a device (ESP8266)
+* clone the project and modify the source for your needs
 
