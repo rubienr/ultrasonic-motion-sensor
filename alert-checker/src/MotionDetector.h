@@ -73,6 +73,7 @@ struct MotionDetector
     void setup(std::function<void(bool)> callback = nullptr);
     void process();
     void skipSamples(uint8_t n);
+    void setTemperatureC(int16_t temp_celsius);
 
 protected:
     const bool verbose;
@@ -87,12 +88,12 @@ protected:
     uint8_t skip_samples;
 
     HCSR04 ultrasonic_sensor;
-    const uint8_t temperature;
+    int16_t temperature;
     std::function<void(bool)> callback;
 
     const uint8_t detection_threshold_mm {50};
     const uint8_t min_sequential_detections {3};
-    const uint16_t sample_scan_separation_ms{75};
+    const uint16_t sample_scan_separation_ms{100};
     const uint16_t num_samples_at_once{3};
 
     uint8_t current_sequential_detections {0};

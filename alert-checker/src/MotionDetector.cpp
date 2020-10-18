@@ -2,6 +2,17 @@
 
 // ------------------------------------------------------------------------------------------------
 
+namespace
+{
+std::underlying_type<MotionDetector::DetectionState>::type to_underlying_type(MotionDetector::DetectionState s)
+{
+
+    return static_cast<std::underlying_type<MotionDetector::DetectionState>::type>(s);
+}
+
+} // namespace
+// ------------------------------------------------------------------------------------------------
+
 MotionDetector::MotionDetector(uint8_t trigger_pin, uint8_t echo_pin, uint8_t temperature, bool verbose_logging)
 : verbose{ verbose_logging }, ultrasonic_sensor{ trigger_pin, echo_pin, temperature, 255 }, temperature{ temperature }
 {
@@ -40,6 +51,15 @@ void MotionDetector::skipSamples(uint8_t n) { skip_samples = n; }
 
 // ------------------------------------------------------------------------------------------------
 
+void MotionDetector::setTemperatureC(int16_t temp_celsius)
+{
+    this->temperature = temp_celsius;
+    ultrasonic_sensor.setTemperature(this->temperature);
+}
+
+// ------------------------------------------------------------------------------------------------
+
+
 bool MotionDetector::probe()
 {
     const float distance = ultrasonic_sensor.getDistance();
@@ -47,7 +67,7 @@ bool MotionDetector::probe()
     // --- skip requested N samples but measure to sample out VCC
     if(skip_samples > 0)
     {
-        Serial.print('.');
+        Serial.print('s');
         if(skip_samples == 1)
             Serial.println();
         skip_samples--;
@@ -61,6 +81,8 @@ bool MotionDetector::probe()
     {
         if(verbose)
             Serial.println(F("out of range"));
+        else
+            Serial.print(F("o"));
         return false;
     }
 
@@ -100,10 +122,13 @@ MotionDetector::DetectionState MotionDetector::detect()
         {
             if(verbose)
             {
-                Serial.printf("dst(%4u,~%4u)", current_distance_mm, average_distance_mm);
+                Serial.printf("dist(%4u,~%4u)", current_distance_mm, average_distance_mm);
                 Serial.printf(" dev(%4u,~%4u) thr(%4u)", current_deviation_mm, average_deviation_mm,
                               detection_threshold_mm);
             }
+
+            if(verbose)
+                Serial.printf(" t(%+2d)°C", temperature);
 
             // ----- accumulate hits above/below threshold
             if(average_deviation_mm >= detection_threshold_mm && current_sequential_detections < min_sequential_detections)
@@ -125,7 +150,7 @@ MotionDetector::DetectionState MotionDetector::detect()
             }
 
             if(verbose)
-                Serial.printf("seq(%2d)", current_sequential_detections);
+                Serial.printf("seq(%2d", current_sequential_detections);
 
             // ----- evaluate limits
             if(current_sequential_detections >= min_sequential_detections)
@@ -133,19 +158,17 @@ MotionDetector::DetectionState MotionDetector::detect()
                 previous_detection_state = current_detection_state;
                 current_detection_state = DetectionState::MotionDetected;
                 if(verbose)
-                    Serial.printf(" hit   ");
+                    Serial.printf("->hit   )");
             }
             else if(current_sequential_detections <= 0)
             {
                 previous_detection_state = current_detection_state;
                 current_detection_state = DetectionState::MotionEndDetected;
                 if(verbose)
-                    Serial.printf(" noise ");
+                    Serial.printf("->noise )");
             }
             else if(verbose)
-            {
-                Serial.printf(" update ");
-            }
+                Serial.printf("->update)");
 
             if(current_detection_state != previous_detection_state)
             {
